@@ -49,11 +49,14 @@
 #include <iostream>
 #include <algorithm>
 #include <QDateTime>
+#include <QBitArray>
+#include <QBuffer>
 
 
 #include "audiooutput.h"
 
 using namespace std;
+
 
 #define PUSH_MODE_LABEL "Enable push mode"
 #define PULL_MODE_LABEL "Enable pull mode"
@@ -82,35 +85,6 @@ Generator::~Generator()
 {
 
 }
-// Muunnos
-void DecToBin(int x)
-{
- int a[100];
- int i=0;
- do
- {
-    a[i]=x%2;
-    x=x/2;
-    i++;
- }
- while(x!=0);
- for(int j=i-1;j>=0;j--)
- cout<<a[j];
- cout<<" ";
-}
-
-//int test()
-//{
-// char* a = "Hello World";
-// for(int k=0;k<strlen(a);k++)
-// {
-// int n=a[k];
-// DecToBin(n);
-// }
-// return 0;
-//}
-
-
 
 void Generator::start()
 {
@@ -127,17 +101,21 @@ void Generator::stop()
 //{
 
 //}
-int string_to_bin()
+
+// tämä antaa loppu tulos QBitArray(0100 1000 0110 0101 0110 1100 0110 1100 0110 1111 0010 0000 0111 0111 0110 1111 0111 0010 0110 1100 0110 0100)
+void bitToArray()
 {
-    QByteArray MyData = QString("Hello World").toUtf8();
-    for (int i = 0; i < MyData.size(); ++i )
-        {
-        int n = MyData[i];
-        DecToBin(n);
-        qDebug() << n ;
-        }
-    return 0;
+    QByteArray bytes = QString("Hello world").toUtf8();
+    QBitArray bits(bytes.count()*8);
+for(int i=0; i<bytes.count(); ++i) {
+    for(int b=0; b<8;b++) {
+        bits.setBit( i*8+b, bytes.at(i)&(1<<(7-b)));
+    qDebug() << bits ;
+    }
 }
+}
+
+
 //void sendMessage(QByteArray myMessage){
 //    for(int p = 0;p < myMessage.size();p++){
 //        modulate(myMessage.at(p));
@@ -201,13 +179,12 @@ void Generator::generateData(const QAudioFormat &format, qint64 durationUs, int 
 
 qint64 Generator::readData(char *data, qint64 len)
 {
-    string_to_bin();
-
+    bitToArray();
     qint64 total = 0;
 
     if (!m_buffer.isEmpty()) {
 
-        QByteArray myMessage = m_buffer;
+        QByteArray modified = m_buffer;
 
         while (len - total > 0) {
             const qint64 chunk = qMin((m_buffer.size() - m_pos), len - total);
@@ -217,9 +194,10 @@ qint64 Generator::readData(char *data, qint64 len)
 //            QDateTime currentTime = QDateTime::currentDateTime();
 
 //            qint64 t = currentTime.currentSecsSinceEpoch();
+
 //            qreal modulationIndex =0;
 
-//            if(t % 2 == 0){
+//            if(t & 1 == 0){
 //                modulationIndex = 1.0;
 //            }else {
 //                modulationIndex = 0.2;
