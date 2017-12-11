@@ -53,6 +53,9 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QTimer>
+#include <QVector>
+#include <QAudioFormat>
+#include <QElapsedTimer>
 
 class Generator : public QIODevice
 {
@@ -69,12 +72,23 @@ public:
     qint64 writeData(const char *data, qint64 len) override;
     qint64 bytesAvailable() const override;
 
+signals:
+
+
+
 private:
     void generateData(const QAudioFormat &format, qint64 durationUs, int sampleRate);
+    void sendMessage(quint8 messageCharacter);
+    QVector<qint16> generateSignalling(QVector<bool> bitStream);
+    quint64 getSampleTimeUs();
+    qreal getBitTimeMs();
+    void sendAudio(QVector<qint16> data);
+
 
 private:
     qint64 m_pos;
     QByteArray m_buffer;
+    QAudioFormat mCurrentAudioFormat;
 };
 
 class AudioTest : public QMainWindow
@@ -105,7 +119,6 @@ private:
     QAudioOutput *m_audioOutput;
     QIODevice *m_output; // not owned
     QAudioFormat m_format;
-
     bool m_pullMode;
     QByteArray m_buffer;
 

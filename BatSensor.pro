@@ -1,13 +1,9 @@
-CONFIG += console c++11
-SOURCES += main.cpp \
-    audiooutput.cpp
 TEMPLATE = app
 TARGET = audiooutput
 
-QT += multimedia widgets
-
-HEADERS       = audiooutput.h \
-    audiooutput.h
+QT += multimedia widgets quick
+CONFIG += c++11
+HEADERS       = audiooutput.h
 
 SOURCES       = audiooutput.cpp \
                 main.cpp
