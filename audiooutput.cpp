@@ -42,21 +42,21 @@
 #include <QAudioOutput>
 #include <QDebug>
 #include <QVBoxLayout>
-#include <qmath.h>
+#include <Qtmath>
+#include <math.h>
 #include <qendian.h>
-#include <bitset>
 #include <QByteArray>
-#include <iostream>
-#include <algorithm>
 #include <QDateTime>
-#include <QBitArray>
-#include <QBuffer>
+#include <QTimer>
+#include <QElapsedTimer>
+#include <QObject>
+#include <QVector>
+#include <QAudioFormat>
 
 
 #include "audiooutput.h"
 
 using namespace std;
-
 
 #define PUSH_MODE_LABEL "Enable push mode"
 #define PULL_MODE_LABEL "Enable pull mode"
@@ -64,10 +64,18 @@ using namespace std;
 #define RESUME_LABEL    "Resume playback"
 #define VOLUME_LABEL    "Volume:"
 
-const int DurationSeconds = 1;
 const int ToneSampleRateHz = 1000;
 const int DataSampleRateHz = 44100;
 const int BufferSize      = 32768;
+const int DurationSeconds = 1.0;
+const int CarrierSampleRateHz = 1000;
+const qreal CarrierAmplitudeN = 0.001;
+const int PayloadCarrierSampleRateHz=DataSampleRateHz/8;
+const int audioSampleSizeInBits = 16;
+const int audioTimerIntervalMs = 10; // notify time won't work if value is too small
+const int audioNotifyIntevalTargetMs = audioTimerIntervalMs*2; // tries to use this
+
+static quint64 periodsForBit =100;
 
 
 Generator::Generator(const QAudioFormat &format,
@@ -97,40 +105,85 @@ void Generator::stop()
     close();
 }
 
-//void modulate(qint8 myDataByte)
-//{
-
-//}
-
-// tämä antaa loppu tulos QBitArray(0100 1000 0110 0101 0110 1100 0110 1100 0110 1111 0010 0000 0111 0111 0110 1111 0111 0010 0110 1100 0110 0100)
-void bitToArray()
+void Generator::sendAudio(QVector<qint16> audioData)
 {
-    QByteArray bytes = QString("Hello world").toUtf8();
-    QBitArray bits(bytes.count()*8);
-for(int i=0; i<bytes.count(); ++i) {
-    for(int b=0; b<8;b++) {
-        bits.setBit( i*8+b, bytes.at(i)&(1<<(7-b)));
-    qDebug() << bits ;
+    emit sendAudio(audioData);
+}
+
+quint64 Generator::getSampleTimeUs() {
+    return (1.0/static_cast<qreal>(mCurrentAudioFormat.sampleRate()))*1000000.0;
+}
+
+qreal Generator::getBitTimeMs()
+{
+    qreal bitTimeMs;
+    bitTimeMs=static_cast<qreal>(periodsForBit)*1.0/PayloadCarrierSampleRateHz*1000.0;
+    return bitTimeMs;
+}
+
+void Generator::sendMessage(quint8 messageCharacter)
+{
+    QByteArray message;
+    message.append(messageCharacter);
+
+    QString("Hello World") = message;
+/* Now only short messages can be set because bit clock is synced
+
+     * in start of firt bit. Clock drifts too much if message is longer than one byte */
+    QVector<bool> bitStream;
+    qDebug()<< "Tx: " << message.toHex();
+    for ( int byteIndex = 0; byteIndex<message.size();byteIndex++) {
+        quint8 byte = message.at(byteIndex);
+        /* Add start bit. This is needed for start of frame detection and
+         * end of transmission (silence after message ) */
+        bitStream.append(true);
+        for ( uint bitIndex = 0; bitIndex<sizeof(quint8)*8;bitIndex++) {
+            quint8 bitValue = byte >> bitIndex & 0x01;
+            bool bit;
+            if (bitValue>0) {
+                bit=true;
+            }
+            else {
+                bit=false;
+            }
+            bitStream.append(bit);
+        }
+        /* Add stop bit */
+        bitStream.append(true);
     }
+
+    QVector<qint16> audioMessage;
+    audioMessage = generateSignalling(bitStream);
+    sendAudio(audioMessage);
 }
+
+QVector<qint16> Generator::generateSignalling(QVector<bool> bitStream)
+
+{
+    QVector<qint16> ret;
+    qreal bitTimeMs;
+    bitTimeMs = getBitTimeMs();
+    QVector<qint16>  bitPulse = generateData(mCurrentAudioFormat,
+                                             bitStream.size()*bitTimeMs*1000.0,
+                                             PayloadCarrierSampleRateHz);
+    int samplesPerBit = bitPulse.size()/bitStream.size();
+    for (int z = 0; z<bitStream.size();z++) {
+        qreal amplitudeN = 1.0;
+        bool bit = bitStream.at(z);
+        if ( bit==true) {
+            amplitudeN=1.0;
+        }
+        else {
+            amplitudeN=0.1;
+        }
+        int offset = z * samplesPerBit;
+        for (int y=0;y<samplesPerBit;y++) {
+            bitPulse[offset+y]*=amplitudeN;
+        }
+    }
+    ret=bitPulse;
+    return ret;
 }
-
-
-//void sendMessage(QByteArray myMessage){
-//    for(int p = 0;p < myMessage.size();p++){
-//        modulate(myMessage.at(p));
-//    }
-//    QByteArray msg;
-//    qint16 data;
-//    msg.append(data);
-//}
-
-//void myTest( )
-//{
-//        QByteArray myMessage = QString("Hello World").toUtf8();
-
-//}
-
 
 void Generator::generateData(const QAudioFormat &format, qint64 durationUs, int sampleRate)
 {
@@ -179,14 +232,12 @@ void Generator::generateData(const QAudioFormat &format, qint64 durationUs, int 
 
 qint64 Generator::readData(char *data, qint64 len)
 {
-    bitToArray();
+
     qint64 total = 0;
 
     if (!m_buffer.isEmpty()) {
 
-        QByteArray modified = m_buffer;
-
-        while (len - total > 0) {
+            while (len - total > 0) {
             const qint64 chunk = qMin((m_buffer.size() - m_pos), len - total);
 
             qDebug() << " memcpy from buffer at" << m_pos << len;
@@ -194,10 +245,9 @@ qint64 Generator::readData(char *data, qint64 len)
 //            QDateTime currentTime = QDateTime::currentDateTime();
 
 //            qint64 t = currentTime.currentSecsSinceEpoch();
-
 //            qreal modulationIndex =0;
 
-//            if(t & 1 == 0){
+//            if(t % 2 == 0){
 //                modulationIndex = 1.0;
 //            }else {
 //                modulationIndex = 0.2;
@@ -319,6 +369,7 @@ void AudioTest::initializeAudio()
 
 void AudioTest::createAudioOutput()
 {
+    qDebug() << __FUNCTION__;
     delete m_audioOutput;
     m_audioOutput = 0;
     m_audioOutput = new QAudioOutput(m_device, m_format, this);
