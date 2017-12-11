@@ -83,6 +83,7 @@ private:
     quint64 getSampleTimeUs();
     qreal getBitTimeMs();
     void sendAudio(QVector<qint16> data);
+    QVector<qint16> generateData2(const QAudioFormat &format, qint64 durationUs, qreal inputSignalFrequency);
 
 
 private:
