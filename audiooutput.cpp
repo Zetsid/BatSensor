@@ -163,7 +163,7 @@ QVector<qint16> Generator::generateSignalling(QVector<bool> bitStream)
     QVector<qint16> ret;
     qreal bitTimeMs;
     bitTimeMs = getBitTimeMs();
-    QVector<qint16>  bitPulse = generateData(mCurrentAudioFormat,
+    QVector<qint16>  bitPulse = generateData2(mCurrentAudioFormat,
                                              bitStream.size()*bitTimeMs*1000.0,
                                              PayloadCarrierSampleRateHz);
     int samplesPerBit = bitPulse.size()/bitStream.size();
@@ -182,6 +182,33 @@ QVector<qint16> Generator::generateSignalling(QVector<bool> bitStream)
         }
     }
     ret=bitPulse;
+    return ret;
+}
+
+QVector<qint16> Generator::generateData2(const QAudioFormat &format, qint64 durationUs, qreal inputSignalFrequency)
+{
+    QVector<qint16> ret;
+
+    const int channelBytes = format.sampleSize() / 8;
+
+    qint64 length = format.sampleRate() * durationUs / 1000000;
+    ret.resize(length);
+    unsigned char *ptr = reinterpret_cast<unsigned char *>(ret.data());
+    for ( int sampleIndex =0; sampleIndex < length;sampleIndex++) {
+
+        const qreal x = qSin(2 * M_PI * inputSignalFrequency  * qreal(sampleIndex % format.sampleRate()) / format.sampleRate());
+
+        qint16 value = static_cast<qint16>(x * 32767);
+
+        if (format.byteOrder() == QAudioFormat::LittleEndian) {
+            qToLittleEndian<qint16>(value, ptr);
+        }
+        else {
+            qToBigEndian<qint16>(value, ptr);
+        }
+        ptr+=channelBytes;
+    }
+
     return ret;
 }
 
